@@ -21,7 +21,7 @@ class CmdTCPServer(socketserver.ThreadingTCPServer):
     daemon_threads = True
     #: much faster rebinding possible
     allow_reuse_address = True
-    address_family = socket.AF_INET6
+    address_family = socket.AF_INET
 
     class CmdRequestHandler(socketserver.StreamRequestHandler):
         def handle(self):
