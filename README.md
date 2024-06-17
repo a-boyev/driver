@@ -17,6 +17,7 @@ pip install -r requirements.txt
 host: 127.0.0.1
 port_device: 5025 # Gwinstek
 port_driver: 8080 # HTTP API
+log_file: log.txt
 ```
 3. Launch driver
 ```bash
