@@ -1,14 +1,16 @@
 # Copyright Aleksey Boev, 2024
 
-import os, signal, yaml, json, socket, subprocess, time, requests, datetime, random
+import os, time, datetime, random, pytest, yaml, json
+import socket, signal, requests, subprocess
 
 context = {"config": {"host": "127.0.0.1", "port_device": 5555, "port_driver": 8080,
                       "log_level": "DEBUG", "poll_interval": 1},
-           "test_dir": "_tmp", "proc_device": None, "proc_driver": None}
+           "test_dir": "_test", "proc_device": None, "proc_driver": None}
 
-def setup():
+@pytest.fixture()
+def mock_env():
     '''
-       Global setup:
+       Setup mock environment:
            - Create 'test_dir' for temporary artifacts (test config and test log)
            - Save test config file to 'test_dir'
            - Launch mock device and driver subprocesses
@@ -26,36 +28,15 @@ def setup():
     time.sleep(0.5)
     context["proc_driver"] = subprocess.Popen(["python", "main.py", config_file])
     time.sleep(0.5)
-
-def teardown():
+    yield
     '''
-       Global teardown:
+       Teardown mock environment:
            - Terminate mock device and driver subprocesses
     '''
     if context["proc_driver"] != None: context["proc_driver"].kill()
     if context["proc_device"] != None: context["proc_device"].kill()
 
-def make_cmd(cmd, channel = None, voltage = None, current = None):
-    result = {"cmd": cmd, "scpi": []}
-    if channel == None: channel = random.randint(1, 4)
-    result["channel"] = channel
-    if cmd == "power_on":
-        if voltage == None: voltage = random.randint(10, 150) / 10.0
-        if current == None: current = random.randint(10, 30) / 10.0
-        result["voltage"] = voltage
-        result["current"] = current
-        result["scpi"].append(f":SOURce{channel}:CURRent {current}")
-        result["scpi"].append(f":SOURce{channel}:VOLTage {voltage}")
-        result["scpi"].append(f":OUTPut{channel}:STATe ON")
-    elif cmd == "power_off":
-        result["scpi"].append(f":OUTPut{channel}:STATe OFF")
-    return result
- 
-def send_cmd(cmd_json):
-    driver_url = "http://" + context["config"]["host"] + ":" + str(context["config"]["port_driver"]) + "/cmd"
-    r = requests.post(driver_url, data=json.dumps(cmd_json))
-
-def test_routing():
+def test_routing(mock_env):
     '''
       Routing tests: check that proper driver method is invoked upon http request
     '''
@@ -73,7 +54,7 @@ def test_routing():
     assert log_item != None
     assert log_item["channel"] == cmd_json["channel"]
 
-def test_scpi():
+def test_scpi(mock_env):
     '''
       SCPI tests: check that proper SCPI command is invoked upon http request
     '''
@@ -83,7 +64,7 @@ def test_scpi():
         log_item = find_log_item(cmd = "send_cmd", keyword = scpi_cmd)
         assert log_item != None
 
-def test_device():
+def test_device(mock_env):
     '''
       Device tests: check that device replies with proper values upon http requests
       Overall scenario:
@@ -119,6 +100,26 @@ def test_device():
         assert log_item["state"][str(i+1)]["voltage"] == cmd_json["voltage"]
         assert log_item["state"][str(i+1)]["current"] == cmd_json["current"]
         assert log_item["state"][str(i+1)]["power"] > 0
+
+def make_cmd(cmd, channel = None, voltage = None, current = None):
+    result = {"cmd": cmd, "scpi": []}
+    if channel == None: channel = random.randint(1, 4)
+    result["channel"] = channel
+    if cmd == "power_on":
+        if voltage == None: voltage = random.randint(10, 150) / 10.0
+        if current == None: current = random.randint(10, 30) / 10.0
+        result["voltage"] = voltage
+        result["current"] = current
+        result["scpi"].append(f":SOURce{channel}:CURRent {current}")
+        result["scpi"].append(f":SOURce{channel}:VOLTage {voltage}")
+        result["scpi"].append(f":OUTPut{channel}:STATe ON")
+    elif cmd == "power_off":
+        result["scpi"].append(f":OUTPut{channel}:STATe OFF")
+    return result
+
+def send_cmd(cmd_json):
+    driver_url = "http://" + context["config"]["host"] + ":" + str(context["config"]["port_driver"]) + "/cmd"
+    r = requests.post(driver_url, data=json.dumps(cmd_json))
 
 def get_free_port(start_port = 5555):
     def check_port(sock, port):
